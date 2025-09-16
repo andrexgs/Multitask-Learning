@@ -1,34 +1,34 @@
 from train_task import train_task
 
-
 def mtl_training(device, tasks_config):
     """
-    Gerenciador de aprendizado multi-tarefas.
+    Gestor de aprendizagem multi-tarefas.
+    Esta função recebe uma lista de configurações de tarefas e executa o treino
+    para cada uma delas de forma sequencial.
 
     Parâmetros:
-    - device: Dispositivo (CPU ou GPU) a ser usado.
-    - tasks_config: Lista de configurações de tarefas. Cada item é um dicionário:
-        {
-            'name': Nome da tarefa,
-            'data': Dados (Dataset ou DataLoader),
-            'params': Parâmetros específicos (ex.: arquitetura, otimizador)
-        }
+    - device: O dispositivo (CPU ou GPU) a ser usado.
+    - tasks_config: Uma lista de dicionários, onde cada dicionário define uma tarefa.
 
     Retorna:
-    - models: Dicionário com os modelos treinados para cada tarefa.
-    - results: Dicionário com os resultados de cada tarefa.
+    - models (dict): Um dicionário com os modelos treinados para cada tarefa.
+    - results (dict): Um dicionário com os resultados de cada tarefa.
     """
     models = {}
     results = {}
 
+    # Itera sobre cada configuração de tarefa fornecida no ficheiro train.py.
     for task in tasks_config:
         task_name = task['name']
         task_data = task['data']
         task_params = task['params']
 
-        print(f"Iniciando o treinamento para a tarefa: {task_name}")
+        print(f"\n{'='*20}\nIniciando treino para a tarefa: {task_name}\n{'='*20}")
+        
+        # Chama a função principal de treino para a tarefa atual.
         model, result = train_task(device, task_name, task_data, task_params)
 
+        # Armazena o modelo treinado e os resultados.
         models[task_name] = model
         results[task_name] = result
 
