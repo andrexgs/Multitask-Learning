@@ -1,3 +1,5 @@
+# src/model.py
+import torch
 import torch.nn as nn
 from torchvision import models
 
@@ -26,14 +28,19 @@ class MultiTaskModel(nn.Module):
         # 2. Remover a Camada de Classificação Original do Backbone
         # A última camada (fully-connected) da ResNet original é removida,
         # pois vamos adicionar as nossas próprias cabeças de tarefa.
-        # Para a ResNet, o corpo que queremos termina antes da camada 'fc'.
+        # Para a ResNet, o corpo que queremos termina antes da camada 'fc' e 'avgpool'.
         if hasattr(self.backbone, 'fc'):
-            self.backbone.fc = nn.Identity()  # nn.Identity() é uma camada que não faz nada.
+            modules = list(self.backbone.children())[:-2]
+            self.backbone = nn.Sequential(*modules)
 
         # 3. Criar as Cabeças Específicas para cada Tarefa
         # O nn.ModuleDict permite-nos manter um dicionário de camadas/módulos do PyTorch,
         # o que é perfeito para gerir as diferentes cabeças de tarefa.
         self.task_heads = nn.ModuleDict(task_heads)
+        
+        # Guardar o número de canais de saída do backbone para a cabeça de segmentação
+        self.num_backbone_out_channels = 512 if backbone_name in ['resnet18', 'resnet34'] else 2048
+
 
     def forward(self, x):
         """
@@ -43,7 +50,14 @@ class MultiTaskModel(nn.Module):
         features = self.backbone(x)
 
         # 2. Passar as características por cada cabeça de tarefa para obter as saídas.
-        # O resultado é um dicionário onde cada chave é o nome da tarefa e o valor é a sua predição.
-        outputs = {task_name: head(features) for task_name, head in self.task_heads.items()}
+        outputs = {}
+        for task_name, head in self.task_heads.items():
+            if task_name == 'classificacao_narina':
+                # Para classificação, aplicamos um pooling antes da camada linear
+                pooled_features = nn.functional.adaptive_avg_pool2d(features, (1, 1))
+                pooled_features = torch.flatten(pooled_features, 1)
+                outputs[task_name] = head(pooled_features)
+            else:
+                outputs[task_name] = head(features)
         
         return outputs

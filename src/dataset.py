@@ -3,7 +3,8 @@ import pandas as pd
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
-import json # <--- ADICIONADO IMPORT NECESSÁRIO
+import json 
+from arch_optim import get_architecture 
 
 class MultiTaskDataset(Dataset):
     """
@@ -216,3 +217,5 @@ class SegmentationDataset(Dataset):
             sample = {'image': image, 'mask': mask}
 
         return sample
+    
+ 
