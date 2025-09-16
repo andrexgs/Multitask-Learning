@@ -89,6 +89,7 @@ def main() -> None:
     images      = []  # lista de dicionários COCO 'images'
     annotations = []  # lista de dicionários COCO 'annotations'
     ann_id      = 0   # contador global de annotations
+    image_id_counter = 0 # << ADICIONE ESTA LINHA
 
     # Para cada classe, percorre suas imagens
     for class_name in class_names:
@@ -102,19 +103,14 @@ def main() -> None:
             with Image.open(path) as img:
                 width, height = img.size
 
-            # Extrai IDs do nome do arquivo (ex: "2_1_mild.jpg")
-            base_name = os.path.splitext(fname)[0]
-            parts    = base_name.split("_")
-            prefix   = int(parts[0])      # ID principal
-            slice_id = int(parts[1])      # sub-ID ou slice
-            # Gera um image_id único (ex: prefix * 100 + slice_id)
-            image_id = prefix * 100 + slice_id
+            # GERA UM ID ÚNICO USANDO O CONTADOR <<---- BLOCO MODIFICADO
+            image_id = image_id_counter
 
             # Adiciona entrada em 'images'
             images.append({
                 "id":            image_id,
                 "license":       1,
-                "file_name":     fname,#os.path.relpath(path, start=base),
+                "file_name":     fname,
                 "height":        height,
                 "width":         width,
                 "date_captured": datetime.now().isoformat()
@@ -131,6 +127,7 @@ def main() -> None:
                 "iscrowd":      0
             })
             ann_id += 1
+            image_id_counter += 1 # << ADICIONE ESTA LINHA
 
     # Monta o dicionário COCO final
     coco_dict = {

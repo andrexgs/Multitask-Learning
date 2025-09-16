@@ -3,6 +3,7 @@ import pandas as pd
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
+import json # <--- ADICIONADO IMPORT NECESSÁRIO
 
 class MultiTaskDataset(Dataset):
     """
@@ -92,3 +93,65 @@ class MultiTaskDataset(Dataset):
             'imagem': image,
             'labels': labels
         }
+
+# --- CÓDIGO NOVO ADICIONADO ABAIXO ---
+
+class ClassificationCocoDataset(Dataset):
+    """
+    Dataset para carregar dados de classificação a partir de um
+    arquivo COCO JSON, como o gerado pelo script de normalização.
+    """
+    def __init__(self, json_path, data_root, transform=None):
+        """
+        Construtor do dataset.
+        
+        Parâmetros:
+        - json_path (str): Caminho para o arquivo COCO JSON.
+        - data_root (str): Caminho para a pasta onde as imagens estão.
+        - transform: Transformações a serem aplicadas nas imagens.
+        """
+        with open(json_path, 'r') as f:
+            coco_data = json.load(f)
+
+        self.transform = transform
+        self.data_root = data_root
+
+        # Encontra a pasta de cada imagem
+        self.image_paths = {}
+        for root, _, files in os.walk(data_root):
+            for file in files:
+                self.image_paths[file] = root
+
+        # Mapeia image_id para file_name
+        images_info = {img['id']: img for img in coco_data['images']}
+        
+        self.annotations = []
+        for ann in coco_data['annotations']:
+            image_id = ann['image_id']
+            if image_id in images_info:
+                img_info = images_info[image_id]
+                file_name = img_info['file_name']
+                
+                if file_name in self.image_paths:
+                    self.annotations.append({
+                        'file_name': file_name,
+                        'category_id': ann['category_id']
+                    })
+
+    def __len__(self):
+        return len(self.annotations)
+
+    def __getitem__(self, idx):
+        ann = self.annotations[idx]
+        
+        file_name = ann['file_name']
+        # Constrói o caminho completo da imagem
+        img_path = os.path.join(self.image_paths[file_name], file_name)
+        
+        image = Image.open(img_path).convert('RGB')
+        label = ann['category_id']
+
+        if self.transform:
+            image = self.transform(image)
+            
+        return image, label

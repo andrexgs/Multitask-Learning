@@ -1,64 +1,82 @@
 import torch
 from torch.utils.data import DataLoader
 from arch_optim import get_architecture, get_optimizer
-
+import math
 
 def train_task(device, task_name, task_data, task_params):
-    """
-    Função encapsulada para treinar um modelo para uma tarefa específica.
+    print(f"\nIniciando treino e validação para a tarefa: {task_name}")
 
-    Parâmetros:
-    - device: dispositivo a ser utilizado (CPU ou GPU).
-    - task_name: nome da tarefa (ex.: 'classificacao_nasal').
-    - task_data: dados específicos da tarefa (Dataset ou DataLoader).
-    - task_params: parâmetros específicos da tarefa (ex.: arquitetura, otimizador).
+    train_dataloader = task_data['train']
+    val_dataloader = task_data['val']
 
-    Retorna:
-    - model: modelo treinado.
-    - resultados: métricas de desempenho (ex.: acurácia, loss final).
-    """
-    print(f"Treinando a tarefa: {task_name}")
-
-    # Obter arquitetura e otimizador
     model = get_architecture(
         task_params["architecture"],
         in_channels=task_params["in_channels"],
         out_classes=task_params["num_classes"],
-        pretrained=task_params.get("use_transfer_learning", False)
-    )
-    model = model.to(device)
+        pretrained=task_params.get("use_transfer_learning", True)
+    ).to(device)
 
     optimizer = get_optimizer(task_params["optimizer"], model.parameters())
-
-    # Definir critério de perda
     criterion = torch.nn.CrossEntropyLoss()
 
-    # Criar DataLoader
-    dataloader = DataLoader(task_data, batch_size=task_params["batch_size"], shuffle=True)
-
-    # Treinamento
     num_epochs = task_params["num_epochs"]
-    model.train()
+    paciencia = task_params.get("paciencia", 5)
+    melhor_acuracia_val = -math.inf
+    total_sem_melhora = 0
+    melhores_resultados = {}
+    caminho_modelo_salvo = f"melhor_modelo_{task_name}.pth"
 
     for epoch in range(num_epochs):
-        running_loss = 0.0
-        for inputs, labels in dataloader:
+        print(f"-------------------------------\nÉpoca {epoch+1}/{num_epochs}")
+        
+        model.train()
+        for inputs, labels in train_dataloader:
             inputs, labels = inputs.to(device), labels.to(device)
-
-            # Zerar gradientes
             optimizer.zero_grad()
-
-            # Forward
             outputs = model(inputs)
             loss = criterion(outputs, labels)
-
-            # Backward
             loss.backward()
             optimizer.step()
 
-            running_loss += loss.item()
+        model.eval()
+        val_loss, correct = 0, 0
+        total_val_samples = 0
+        with torch.no_grad():
+            for inputs, labels in val_dataloader:
+                inputs, labels = inputs.to(device), labels.to(device)
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+                val_loss += loss.item()
+                
+                _, predicted = torch.max(outputs.data, 1)
+                total_val_samples += labels.size(0)
+                correct += (predicted == labels).sum().item()
 
-        print(f"Tarefa [{task_name}] - Época [{epoch+1}/{num_epochs}] - Loss: {running_loss / len(dataloader):.4f}")
+        avg_val_loss = val_loss / len(val_dataloader)
+        acuracia_val = correct / total_val_samples
+        
+        print(f"\n>> RESULTADOS DA ÉPOCA {epoch+1}: Acurácia de Validação: {(100*acuracia_val):.2f}% | Perda: {avg_val_loss:.4f}")
 
-    print(f"Treinamento finalizado para a tarefa: {task_name}")
-    return model, {"loss": running_loss / len(dataloader)}
+        if acuracia_val > melhor_acuracia_val:
+            print(f">>> Acurácia melhorou. Salvando modelo...")
+            melhor_acuracia_val = acuracia_val
+            torch.save(model.state_dict(), caminho_modelo_salvo)
+            total_sem_melhora = 0
+            melhores_resultados = {
+                "melhor_acuracia": f"{(100*melhor_acuracia_val):.2f}%",
+                "perda_validacao": avg_val_loss,
+                "epoca_encontrada": epoch + 1
+            }
+        else:
+            total_sem_melhora += 1
+            print(f">>> Acurácia não melhorou. Paciência: {total_sem_melhora}/{paciencia}")
+
+        if total_sem_melhora >= paciencia:
+            print(f"\nPARAGEM ANTECIPADA! O modelo não melhora há {paciencia} épocas.")
+            break
+            
+    print(f"\nTreinamento finalizado para a tarefa: {task_name}")
+    print(f"Carregando o melhor modelo salvo em '{caminho_modelo_salvo}'")
+    model.load_state_dict(torch.load(caminho_modelo_salvo))
+    
+    return model, melhores_resultados
