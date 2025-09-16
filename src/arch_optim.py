@@ -1,67 +1,78 @@
 import torch
 import torch.optim as optim
 from torchvision import models
+import torch.nn as nn
 
-def get_architecture(architecture, out_classes, pretrained=True, in_channels=3):
+class SegmentationHead(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.upsample = nn.Sequential(
+            nn.ConvTranspose2d(in_channels, 256, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(32, out_channels, kernel_size=4, stride=2, padding=1)
+        )
+    def forward(self, x):
+        return self.upsample(x)
+
+def get_architecture(architecture, task_params, pretrained=True):
     """
-    Carrega uma arquitetura de modelo pré-treinada do torchvision.
-
-    Parâmetros:
-    - architecture (str): Nome do modelo (ex: 'resnet18').
-    - out_classes (int): Número de classes de saída.
-    - pretrained (bool): Se deve usar pesos pré-treinados.
-    - in_channels (int): Número de canais de entrada (geralmente 3 para RGB).
-
-    Retorna:
-    - model: O modelo PyTorch.
+    Carrega uma arquitetura e adapta-a para a tarefa especificada nos parâmetros.
     """
-    # Carrega o modelo com os pesos pré-treinados
-    model = getattr(models, architecture)(pretrained=pretrained)
+    task_type = task_params.get("task_type", "classification")
+    out_classes = task_params["num_classes"]
+    
+    if task_type == 'classification':
+        model = getattr(models, architecture)(weights='IMAGENET1K_V1' if pretrained else None)
+        
+        if hasattr(model, 'fc'):
+            num_ftrs = model.fc.in_features
+            
+            if "classifier_head" in task_params:
+                print("Construindo cabeça de classificação personalizada...")
+                head_params = task_params["classifier_head"]
+                layer1_neurons = head_params["layer1_neurons"]
+                layer2_neurons = head_params["layer2_neurons"]
+                dropout = head_params["dropout"]
+                
+                model.fc = nn.Sequential(
+                    nn.Linear(num_ftrs, layer1_neurons),
+                    nn.ReLU(),
+                    nn.Dropout(dropout),
+                    nn.Linear(layer1_neurons, layer2_neurons),
+                    nn.ReLU(),
+                    nn.Dropout(dropout),
+                    nn.Linear(layer2_neurons, out_classes)
+                )
+            else:
+                print("Usando cabeça de classificação padrão (camada única).")
+                model.fc = nn.Linear(num_ftrs, out_classes)
+        return model
 
-    # Modifica a primeira camada se o número de canais de entrada não for 3
-    if in_channels != 3:
-        # Para ResNet e arquiteturas similares
-        if hasattr(model, 'conv1'):
-            original_conv1 = model.conv1
-            model.conv1 = torch.nn.Conv2d(
-                in_channels,
-                original_conv1.out_channels,
-                kernel_size=original_conv1.kernel_size,
-                stride=original_conv1.stride,
-                padding=original_conv1.padding,
-                bias=original_conv1.bias
-            )
-        # Adicione aqui outras lógicas para diferentes arquiteturas se necessário
-
-    # Modifica a última camada (classificador) para o número de classes desejado
-    if hasattr(model, 'fc'): # Para ResNet, etc.
-        num_ftrs = model.fc.in_features
-        model.fc = torch.nn.Linear(num_ftrs, out_classes)
-    elif hasattr(model, 'classifier'): # Para MobileNetV2, etc.
-        # A lógica pode variar um pouco dependendo do modelo
-        if isinstance(model.classifier, torch.nn.Sequential):
-            num_ftrs = model.classifier[-1].in_features
-            model.classifier[-1] = torch.nn.Linear(num_ftrs, out_classes)
-        else: # Caso seja uma única camada
-            num_ftrs = model.classifier.in_features
-            model.classifier = torch.nn.Linear(num_ftrs, out_classes)
+    elif task_type == 'segmentation':
+        backbone = getattr(models, architecture)(weights='IMAGENET1K_V1' if pretrained else None)
+        modules = list(backbone.children())[:-2]
+        
+        num_backbone_out_channels = 512 if architecture in ['resnet18', 'resnet34'] else 2048
+        
+        model_body = nn.Sequential(*modules)
+        
+        # --- CORREÇÃO AQUI ---
+        # Adicionámos o argumento 'out_channels' que estava em falta.
+        segmentation_head = SegmentationHead(in_channels=num_backbone_out_channels, out_channels=out_classes)
+        
+        full_model = nn.Sequential(model_body, segmentation_head)
+        return full_model
+        
     else:
-        raise Exception("Arquitetura não suportada para modificação automática da última camada.")
-
-    return model
+        raise ValueError(f"Tipo de tarefa '{task_type}' não suportado.")
 
 def get_optimizer(optimizer_name, parameters, lr=1e-3):
-    """
-    Cria um otimizador com base no nome.
-
-    Parâmetros:
-    - optimizer_name (str): Nome do otimizador ('adam' ou 'sgd').
-    - parameters: Parâmetros do modelo para otimizar (model.parameters()).
-    - lr (float): Taxa de aprendizado.
-
-    Retorna:
-    - optimizer: O otimizador PyTorch.
-    """
     if optimizer_name.lower() == 'adam':
         return optim.Adam(parameters, lr=lr)
     elif optimizer_name.lower() == 'sgd':

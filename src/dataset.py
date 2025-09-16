@@ -155,3 +155,64 @@ class ClassificationCocoDataset(Dataset):
             image = self.transform(image)
             
         return image, label
+
+class SegmentationDataset(Dataset):
+    """
+    Dataset para carregar pares de imagem e máscara para tarefas de segmentação.
+    Assume que os nomes dos ficheiros de imagem e máscara são os mesmos.
+    """
+    def __init__(self, image_dir, mask_dir, transform=None):
+        """
+        Construtor do dataset de segmentação.
+        
+        Parâmetros:
+        - image_dir (str): Caminho para a pasta de imagens.
+        - mask_dir (str): Caminho para a pasta de máscaras (anotações).
+        - transform: Transformações a serem aplicadas na imagem e na máscara.
+        """
+        self.image_dir = image_dir
+        self.mask_dir = mask_dir
+        self.transform = transform
+        # Lista apenas os ficheiros de imagem, assumindo que cada um tem uma máscara correspondente
+        self.images = [f for f in os.listdir(image_dir) if os.path.isfile(os.path.join(image_dir, f))]
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        # Nome do ficheiro da imagem
+        img_name = self.images[idx]
+        
+        # Caminho completo para a imagem e a máscara
+        img_path = os.path.join(self.image_dir, img_name)
+        
+        # Constrói o caminho da máscara, tentando extensões comuns
+        mask_name = os.path.splitext(img_name)[0] + ".png" # Assume que as máscaras são .png
+        mask_path = os.path.join(self.mask_dir, mask_name)
+        if not os.path.exists(mask_path):
+            # Tenta com a mesma extensão da imagem se .png não existir
+            mask_name = img_name
+            mask_path = os.path.join(self.mask_dir, mask_name)
+
+        # Carrega a imagem e a máscara
+        image = Image.open(img_path).convert("RGB")
+        mask = Image.open(mask_path).convert("L") # Converte para grayscale (preto e branco)
+
+        sample = {'image': image, 'mask': mask}
+
+        if self.transform:
+            # NOTA: A transformação para segmentação é mais complexa,
+            # vamos usar uma simples por agora e podemos melhorar depois.
+            image = self.transform(image)
+            # Para a máscara, geralmente só redimensionamos e convertemos para tensor
+            mask_transform = transforms.Compose([
+                transforms.Resize((224, 224)),
+                transforms.ToTensor()
+            ])
+            mask = mask_transform(mask)
+            # Normaliza a máscara para ter valores 0 ou 1
+            mask = (mask > 0.5).float()
+            
+            sample = {'image': image, 'mask': mask}
+
+        return sample
