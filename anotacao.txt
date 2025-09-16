@@ -1,0 +1,7 @@
+---- Imagens
+
+- classificacao: imagens classificadas (nome dos arquivos correlacionam com as outras imagens)
+
+- data: imagens de cada narina anotada com segmentação
+
+- data_full_img: imagens originais com as duas narinas anotadas com segmentação
