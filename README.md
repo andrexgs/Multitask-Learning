@@ -9,10 +9,10 @@ Este projeto é uma estrutura modular e robusta para experimentação com Aprend
 ## Principais Funcionalidades
 
 -   **Estrutura Modular:** O código é organizado de forma lógica, separando o carregamento de dados, a definição da arquitetura (`arch_optim.py`) e a lógica de treino (`train_task.py`), facilitando a manutenção e expansão.
+-   **Carregamento de Dados Simplificado:** Utiliza o `ImageFolder` do PyTorch para carregar datasets de classificação diretamente da estrutura de pastas, sem a necessidade de ficheiros de anotação adicionais.
 -   **Treino e Validação Robustos:** Inclui uma divisão automática dos dados em conjuntos de treino e validação, garantindo uma avaliação fiável do desempenho do modelo.
 -   **Paragem Antecipada (Early Stopping):** O treino monitoriza a acurácia na validação e para automaticamente se o modelo deixar de melhorar, poupando tempo e prevenindo o sobreajuste (*overfitting*).
 -   **Data Augmentation:** Aplica transformações aleatórias às imagens de treino (rotações, inversões) para aumentar a variedade dos dados e melhorar a capacidade de generalização do modelo.
--   **Flexibilidade:** Adicionar uma nova tarefa é simplificado, bastando configurar os dados e os parâmetros no ficheiro principal `train.py`.
 
 ## Como Começar
 
@@ -41,13 +41,7 @@ source multitask/bin/activate
 
 Agora, instale todas as bibliotecas necessárias. Pode criar um ficheiro `requirements.txt` para facilitar:
 ```bash
-# Crie este ficheiro manualmente ou com 'pip freeze > requirements.txt'
-# Conteúdo do requirements.txt:
-# torch
-# torchvision
-# scikit-learn
-# pillow
-
+# Crie este ficheiro com 'pip freeze > requirements.txt'
 pip install -r requirements.txt
 ```
 
@@ -67,7 +61,7 @@ multitask-learning/
         │   └── imagem4.jpg
         └── ...
 ```
-O script irá detetar os nomes das pastas como os nomes das classes automaticamente.
+O script `src/train.py` irá detetar os nomes das pastas como os nomes das classes automaticamente.
 
 ### 4. Treino do Modelo
 
@@ -77,14 +71,31 @@ python3 src/train.py
 ```
 O script irá automaticamente dividir os dados (70% para treino, 30% para validação), iniciar o treino e exibir o progresso. O melhor modelo será guardado na raiz do projeto com o nome `melhor_modelo_<nome_da_tarefa>.pth`.
 
-## Estrutura do Código (`src/`)
+## Ferramentas de Pré-processamento (`utils/`)
 
--   `train.py`: O ponto de entrada principal. Aqui você configura as tarefas, prepara os `DataLoaders` e inicia o processo de treino.
--   `mtl_manager.py`: O gestor que recebe as configurações de todas as tarefas e chama a função de treino para cada uma delas.
--   `train_task.py`: Contém a lógica de treino detalhada para uma única tarefa, incluindo o loop por épocas, as fases de treino e validação, e a paragem antecipada.
--   `arch_optim.py`: Define as funções para obter a arquitetura do modelo (ex: `resnet18`) e o otimizador (ex: `Adam`).
--   `dataset.py`: Contém classes `Dataset` personalizadas para carregar diferentes tipos de dados.
--   `model.py`: Definição do modelo multi-tarefa, com um *backbone* partilhado e "cabeças" específicas para cada tarefa.
+O projeto inclui scripts na pasta `utils/` para converter outros formatos de dataset para o padrão COCO JSON. Embora **não sejam necessários para o fluxo de trabalho de classificação atual**, são ferramentas úteis para outras tarefas ou tipos de dados.
+
+### Normalização de Datasets de Classificação
+O script `normaliza_dataset_classificacao.py` converte um dataset de classificação organizado em pastas para o formato COCO JSON.
+**Como usar:**
+```bash
+python3 utils/normaliza_dataset_classificacao.py \
+  -f pastas \
+  -d data/classificacao \
+  -o .
+```
+
+### Normalização de Datasets de Segmentação
+O script `normaliza_dataset_segmentacao.py` converte um dataset de segmentação (imagens e máscaras) para o formato COCO JSON.
+**Como usar:**
+```bash
+python3 utils/normaliza_dataset_segmentacao.py \
+  -f imagem_mascara_binaria \
+  -d data/segmentacao \
+  -i imagens \
+  -a anotacoes \
+  -o .
+```
 
 ## Próximos Passos
 -   [ ] Adicionar uma tarefa de **segmentação semântica** à estrutura.
